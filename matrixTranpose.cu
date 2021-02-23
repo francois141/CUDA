@@ -3,7 +3,7 @@
 #include <iostream>
 
 const unsigned int TILE_DIM = 32;
-const unsigned int BLOCK_ROWS = 8;
+const unsigned int BLOCK_ROWS = 32;
 
 const unsigned int SIZE = 256;
 
@@ -18,10 +18,8 @@ __global__ void transposeOptmized(int *odata,int *idata)
     int width = gridDim.x * TILE_DIM;
 
     // Copy to the shared memory
-    for(int j = 0; j < TILE_DIM; j+= BLOCK_ROWS) {
-        tile[threadIdx.y + j][threadIdx.x] = idata[(sizeY+j)*width + sizeX];
-    }
-
+    tile[threadIdx.y][threadIdx.x] = idata[(sizeY)*width + sizeX];
+    
     // Add a barrier
     __syncthreads();
 
@@ -30,9 +28,7 @@ __global__ void transposeOptmized(int *odata,int *idata)
     sizeY = blockIdx.x * TILE_DIM + threadIdx.y;
 
     // Tranpose back
-    for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS) {
-        odata[(sizeY+j)*width + sizeX] = tile[threadIdx.x][threadIdx.y + j];
-    }
+    odata[(sizeY)*width + sizeX] = tile[threadIdx.x][threadIdx.y];
 }
 
 // Naive implementation - not very efficient
@@ -51,7 +47,7 @@ __global__ void transposeNaive(int *odata,int *idata)
 }
 
 int main() {
-    
+
     dim3 dimGrid(SIZE/TILE_DIM,SIZE/TILE_DIM);
     dim3 dimBlock(TILE_DIM,BLOCK_ROWS,1);
 
