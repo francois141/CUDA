@@ -24,6 +24,16 @@ void addNormal(int n,float *x,float *y)
   }
 }
 
+__global__ void reverseFixedArray(int *d, int n)
+{
+  __shared__ int s[512];
+  int t = threadIdx.x;
+  int tr = n - t - 1;
+  s[t] = d[t];
+  __syncthreads(); // We need to put a barrier here
+  d[t] = s[tr];
+}
+
 int main(void)
 {
   /** CHECK DEVICES FIRST **/
@@ -68,6 +78,7 @@ int main(void)
   cudaEventRecord(start);
 
   dim3 gridSize = dim3(1024,0,0);
+
   add<<<N/1024, gridSize>>>(N, x, y);
   
   cudaEventRecord(stop);
@@ -77,7 +88,7 @@ int main(void)
   cudaEventSynchronize(stop);
   float milliseconds = 0;
   cudaEventElapsedTime(&milliseconds, start, stop);
-  std::cout << "Time take with GPU : " << milliseconds << " ms" << std::endl;
+  std::cout << "Time taken with GPU : " << milliseconds << " ms" << std::endl;
 
   cudaFree(x);
   cudaFree(y);
@@ -93,7 +104,46 @@ int main(void)
   auto end2 = std::chrono::steady_clock::now();
 
   auto diff2 = end2 - start2;
-  std::cout << "Time take with CPU : " << std::chrono::duration <double, std::milli> (diff2).count() << " ms" << std::endl;
+  std::cout << "Time taken with CPU : " << std::chrono::duration <double, std::milli> (diff2).count() << " ms" << std::endl;
+
+  constexpr unsigned int n = 512;
+  int array[n];
+  for(int i = 0; i < n;i++) {
+    array[i] = i;
+  }
+
+
+  int *cudaArray;
+  cudaMalloc(&cudaArray,n*sizeof(int));
+
+  cudaMemcpy(cudaArray,array,n*sizeof(int),cudaMemcpyHostToDevice);
+  reverseFixedArray<<<1,n>>>(cudaArray,n);
+  cudaMemcpy(array,cudaArray,n*sizeof(int),cudaMemcpyDeviceToHost);
+
+  std::cout << array[0] << " " << array[511] << std::endl;
+
+  // Test the same but with a new stream
+
+  int array2[n];
+  for(int i = 0; i < n;i++) {
+    array2[i] = i;
+  }
+
+  cudaStream_t stream;
+  cudaStreamCreate(&stream);
+
+
+  int *cudaArray2;
+  cudaMalloc(&cudaArray2,n*sizeof(int));
+
+  cudaMemcpyAsync(cudaArray2,array2,n*sizeof(int),cudaMemcpyHostToDevice,stream);
+  reverseFixedArray<<<1,n,0,stream>>>(cudaArray2,n);
+  cudaMemcpyAsync(array2,cudaArray2,n*sizeof(int),cudaMemcpyDeviceToHost,stream);
+
+  cudaStreamDestroy(stream);
+
+  std::cout << array2[0] << " " << array2[511] << std::endl;
+
 
   return 0;
 }
